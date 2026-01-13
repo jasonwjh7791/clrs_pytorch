@@ -281,8 +281,8 @@ def create_samplers(rng: Any,
 
     algorithms = algorithms or FLAGS.algorithms
     for algo_idx, algorithm in enumerate(algorithms):
-        # Run dataset pipeline on CPU.
-        with device:
+        # Make full dataset pipeline run on CPU (including prefetching).
+        with tf.device('/cpu:0'):
             if algorithm in ['naive_string_matcher', 'kmp_matcher']:
                 max_length = max(train_lengths)
                 if max_length > 0:
@@ -321,7 +321,7 @@ def create_samplers(rng: Any,
 
             mult = clrs_pytorch.CLRS_30_ALGS_SETTINGS[algorithm]['num_samples_multiplier']
             val_args = dict(
-                sizes=val_lengths,
+                sizes=val_lengths or [np.amax(train_lengths)],
                 split='val',
                 batch_size=val_batch_size,
                 multiplier=2 * mult,
@@ -333,7 +333,7 @@ def create_samplers(rng: Any,
             val_sampler, val_samples, spec = make_multi_sampler(**val_args)
 
             test_args = dict(
-                sizes=test_lengths,
+                sizes=test_lengths or [-1],
                 split='test',
                 batch_size=test_batch_size,
                 multiplier=2 * mult,
