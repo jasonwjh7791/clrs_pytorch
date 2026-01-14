@@ -15,7 +15,7 @@
 
 """The CLRS Algorithmic Reasoning Benchmark."""
 
-from clrs_pytorch import models
+from . import models
 
 from clrs_pytorch._src import algorithms
 
@@ -69,7 +69,6 @@ __all__ = (
     "CLRS_30_ALGS_SETTINGS",
     "create_chunked_dataset",
     "create_dataset",
-    "clrs_text",
     "get_clrs_folder",
     "get_dataset_gcp_url",
     "get_processor_factory",
