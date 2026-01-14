@@ -8,3 +8,40 @@ checkpoints/
 clrs_checkpoints/
 clrs_performance/
 clrs_pytorch/_src/__pycache__
+
+# Virtual environment and packaging
+venv/
+env/
+ENV/
+.venv/
+.env
+.Python
+
+# Conda / Miniforge / Miniconda installers and environments
+miniconda3/
+Miniconda3-*
+miniforge3/
+Miniforge3-*
+anaconda3/
+conda-env/
+.conda/
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints
+
+# IDEs
+.idea/
+
+# Misc
+.cache/
+pip-log.txt
