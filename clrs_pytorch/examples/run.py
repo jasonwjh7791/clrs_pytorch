@@ -37,9 +37,9 @@ _Feedback = samplers.Feedback
 _Location = specs.Location
 
 # -------------------------- Flag Definitions --------------------------
-flags.DEFINE_list('algorithms', ['naive_string_matcher'], 'Algorithms to run.')
+flags.DEFINE_list('algorithms', ['bfs'], 'Which algorithms to run.')
 flags.DEFINE_list('train_lengths', ['4', '7', '11', '13', '16'],
-                  'Training sizes to use. A size of -1 means use the benchmark dataset.')
+                  'Which training sizes to use. A size of -1 means use the benchmark dataset.')
 flags.DEFINE_integer('length_needle', -8,
                      'Needle length for training and validation (not testing) in string matching. '
                      'A negative value randomizes the length between 1 and the absolute value. '
@@ -49,7 +49,7 @@ flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_boolean('random_pos', True, 'Randomize the pos input common to all algorithms.')
 flags.DEFINE_boolean('enforce_permutations', True, 'Enforce permutation-type node pointers.')
 flags.DEFINE_boolean('enforce_pred_as_input', True, 'Convert fixed pred_h hints into pred inputs.')
-flags.DEFINE_integer('batch_size', 16, 'Batch size for training.')
+flags.DEFINE_integer('batch_size', 32, 'Batch size used for training.')
 flags.DEFINE_boolean('chunked_training', False, 'Use chunking for training.')
 flags.DEFINE_integer('chunk_length', 16, 'Time chunk length for training (if chunked_training is True).')
 flags.DEFINE_integer('train_steps', 10000, 'Number of training iterations.')
@@ -60,25 +60,28 @@ flags.DEFINE_integer('hidden_size', 128, 'Number of hidden units in the model.')
 flags.DEFINE_integer('nb_heads', 1, 'Number of heads for GAT processors.')
 flags.DEFINE_integer('nb_msg_passing_steps', 1, 'Number of message passing steps per hint.')
 flags.DEFINE_float('learning_rate', 0.001, 'Learning rate.')
-flags.DEFINE_float('grad_clip_max_norm', 0.0, 'Gradient clipping norm (0.0 disables clipping).')
+flags.DEFINE_float('grad_clip_max_norm', 1.0, 'Gradient clipping by norm. 0.0 disables grad clipping.')
 flags.DEFINE_float('dropout_prob', 0.0, 'Dropout rate.')
-flags.DEFINE_float('hint_teacher_forcing', 0.5,
-                   'Probability that ground-truth teacher hints are encoded during training '
-                   'instead of predicted hints (only pertinent in encoded_decoded modes).')
+flags.DEFINE_float('hint_teacher_forcing', 0.0,
+                   'Probability that ground-truth teacher hints are encoded '
+                   'during training instead of predicted hints. Only '
+                   'pertinent in encoded_decoded modes.')
 flags.DEFINE_enum('hint_mode', 'encoded_decoded',
                   ['encoded_decoded', 'decoded_only', 'none'],
                   'Hint mode: encoded_decoded (hardest, default), decoded_only, or none.')
-flags.DEFINE_enum('hint_repred_mode', 'hard',
-                  ['soft', 'hard', 'hard_on_eval'],
-                  'Mode for processing predicted hints: soft, hard, or hard_on_eval.')
+flags.DEFINE_enum('hint_repred_mode', 'soft', ['soft', 'hard', 'hard_on_eval'],
+                  'How to process predicted hints when fed back as inputs. '
+                  'In soft mode, we use softmaxes for categoricals, pointers '
+                  'and mask_one, and sigmoids for masks. In hard mode, we use '
+                  'argmax and hard thresholding. hard_on_eval: soft for train, hard for eval.')
 flags.DEFINE_boolean('use_ln', True, 'Use layer normalization in the processor.')
 flags.DEFINE_boolean('use_lstm', False, 'Insert an LSTM after message passing.')
 flags.DEFINE_integer('nb_triplet_fts', 8, 'Number of triplet features to compute.')
 
-flags.DEFINE_enum('encoder_init', 'default',
+flags.DEFINE_enum('encoder_init', 'xavier_on_scalars',
                   ['default', 'xavier_on_scalars'],
-                  'Initializer to use for the encoders.')
-flags.DEFINE_enum('processor_type', 'mpnn',
+                  'Initialiser to use for the encoders.')
+flags.DEFINE_enum('processor_type', 'triplet_gmpnn',
                   ['deepsets', 'mpnn', 'pgn', 'pgn_mask',
                    'triplet_mpnn', 'triplet_pgn', 'triplet_pgn_mask',
                    'gat', 'gatv2', 'gat_full', 'gatv2_full',
@@ -99,7 +102,13 @@ flags.DEFINE_string(
 flags.DEFINE_string('dataset_path', '/tmp/CLRS30', 'Path where the dataset is stored.')
 flags.DEFINE_boolean('freeze_processor', False, 'Freeze the processor of the model.')
 flags.DEFINE_boolean('resume', False, 'Resume training from the last saved checkpoint if available.')
-flags.DEFINE_integer('test_lengths', -1, 'Test lengths. Defaults to -1, where we use test datasets. If 0 we use max of train lengths')
+flags.DEFINE_integer(
+    'test_length',
+    -1,
+    'Problem size for the test set. -1 = official CLRS30 test set (default, like original CLRS; '
+    'requires pip install -e ".[dataset]"). 0 = use max(train_lengths) for synthetic-only run. '
+    'Positive = synthetic test at that length (e.g. 16 or 64).',
+)
 
 FLAGS = flags.FLAGS
 
@@ -264,7 +273,8 @@ def create_samplers(rng: Any,
       train_lengths: List of training sample sizes.
       algorithms: List of algorithms; defaults to FLAGS.algorithms.
       val_lengths: List of validation sample sizes; defaults to maximum training length.
-      test_lengths: List of test sample sizes; defaults to [-1] for the benchmark dataset.
+      test_lengths: List of test problem sizes (usually one element). Each 0 is resolved to
+        max(train_lengths) by the caller; -1 = official CLRS30 test set; positive = that length.
       train_batch_size: Batch size for training.
       val_batch_size: Batch size for validation.
       test_batch_size: Batch size for testing.
@@ -506,6 +516,13 @@ def main(unused_argv):
         'cpu'
     )
 
+    # Resolve test_length: 0 -> max(train_lengths), -1 -> benchmark, positive -> that size.
+    max_train = int(np.amax(train_lengths))
+    if FLAGS.test_length == 0:
+        test_length_resolved = max_train
+    else:
+        test_length_resolved = FLAGS.test_length
+
     # Create samplers.
     (train_samplers,
      val_samplers,
@@ -517,7 +534,7 @@ def main(unused_argv):
         train_lengths=train_lengths,
         algorithms=FLAGS.algorithms,
         val_lengths=[np.amax(train_lengths)],
-        test_lengths=[np.amax(train_lengths)] if FLAGS.test_lengths == 0 else [FLAGS.test_lengths],
+        test_lengths=[test_length_resolved],
         train_batch_size=FLAGS.batch_size,
         device=device
     )
