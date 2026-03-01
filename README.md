@@ -15,59 +15,100 @@ The code and documentation in this repository are derived from and remain
 compatible with the original CLRS design, but this project is **not affiliated
 with or endorsed by DeepMind**.
 
+---
+
+### Main entry point: `examples/run.py`
+
+**The main way to use this repo is the training script** `clrs_pytorch.examples.run`.
+It trains the PyTorch CLRS baseline on one or more algorithms with synthetic
+data (no TensorFlow required by default).
+
+**From the command line:**
+
+```bash
+# Install the package first
+pip install -e .
+
+# Train on BFS (short run; uses synthetic data)
+python -m clrs_pytorch.examples.run \
+  --algorithms=bfs \
+  --batch_size=16 \
+  --train_steps=1000 \
+  --eval_every=50 \
+  --test_lengths=16
+```
+
+- **`--algorithms`**: Comma-separated list, e.g. `bfs`, `dfs`, `naive_string_matcher`, `quicksort`. See the 30 algorithm names in the repo.
+- **`--train_lengths`**: Problem sizes used for training (default `4,7,11,13,16`). Use `-1` only if you have installed the optional dataset extras and want the official CLRS30 benchmark data.
+- **`--test_lengths`**: Problem sizes for the final test evaluation. Use **`16`** (or any positive size) to run test on synthetic data without needing TensorFlow. Omit or use `-1` only if you installed `.[dataset]` and want the official test set.
+- **`--checkpoint_path`**: Where to save the best model (default `artifacts/checkpoints/checkpoint.pth`).
+- **`--performance_path`**: Where to save validation/test scores (default `artifacts/metrics/performance.json`).
+
+Checkpoints and metrics are written under `artifacts/`; the script creates the directories if they don’t exist.
+
+---
+
+### Google Colab: copy‑paste script
+
+Run the following in a Colab cell to clone the repo, install, and train on BFS (short run). No GPU required for this small example.
+
+```python
+# Clone and install (run once)
+!git clone https://github.com/YOUR_USERNAME/clrs_pytorch.git
+%cd clrs_pytorch
+!pip install -e .
+
+# Train on BFS for 100 steps (synthetic data; no TFDS)
+!python -m clrs_pytorch.examples.run \
+  --algorithms=bfs \
+  --batch_size=8 \
+  --train_steps=100 \
+  --eval_every=25 \
+  --test_lengths=16
+```
+
+Replace `YOUR_USERNAME/clrs_pytorch` with your fork or the actual repo URL. To use the official CLRS30 dataset in Colab, first run `!pip install -e ".[dataset]"` and then use `--train_lengths=-1` and `--test_lengths=-1` (and set `--dataset_path` if needed).
+
+---
+
 ### Installation
 
-- **Core library (PyTorch models, samplers, losses, evaluation):**
+- **Core (recommended for most users):**
 
 ```bash
 pip install -e .
 ```
 
-This installs the `clrs_pytorch` package with only the dependencies needed
-to:
+This is enough to run `clrs_pytorch.examples.run` with **synthetic data** (no TensorFlow).
 
-- build PyTorch CLRS models,
-- sample synthetic training data directly in PyTorch/JAX‑style, and
-- run the unit tests.
+- **Optional – official CLRS30 dataset (TensorFlow + TFDS):**
 
-- **Optional dataset support (TF/TFDS CLRS30 benchmark):**
-
-The official CLRS30 dataset is distributed via TensorFlow Datasets. To enable
-loading and chunking those TFDS trajectories, install the extra dataset
-dependencies:
+If you want to load the pre-generated CLRS30 benchmark data:
 
 ```bash
 pip install -e ".[dataset]"
 ```
 
-This enables:
+Then you can use `--train_lengths=-1` and `--test_lengths=-1` in `run.py` to use that data. See section “Using the official CLRS30 benchmark dataset” below.
 
-- `clrs_pytorch.create_dataset(...)`
-- `clrs_pytorch.create_chunked_dataset(...)`
-- automatic downloading/unpacking of `CLRS30_v*.tar.gz` via
-  `clrs_pytorch.get_dataset_gcp_url()` / `get_clrs_folder()`.
-
-- **Developer extras (tests, linting, etc.):**
+- **Optional – development (tests):**
 
 ```bash
 pip install -e ".[dev]"
 pytest -q
 ```
 
-### Quick start
+---
+
+### Quick start (programmatic)
 
 #### Using samplers directly (no TFDS)
 
-For most research on neural algorithmic reasoning, you do **not** need
-TensorFlow – you can generate synthetic data on the fly using the built‑in
-samplers:
+You can also drive training yourself with the public API:
 
 ```python
-import numpy as np
-import torch
 import clrs_pytorch
 
-# Build a sampler for BFS on graphs of length 16.
 sampler, spec = clrs_pytorch.build_sampler(
     name='bfs',
     seed=42,
@@ -80,82 +121,28 @@ def iterate_sampler(batch_size: int):
         yield sampler.next(batch_size)
 
 train_iter = iterate_sampler(batch_size=32)
-
-feedback = next(train_iter)          # CLRS feedback object
-model = clrs_pytorch.Model(...)      # or use clrs_pytorch.models.BaselineModel
+feedback = next(train_iter)  # Use with clrs_pytorch.models.BaselineModel, etc.
 ```
-
-Here `feedback.features.inputs`, `feedback.features.hints`, and
-`feedback.outputs` match the CLRS spec; the PyTorch losses and evaluation code
-in `clrs_pytorch._src.losses` and `clrs_pytorch._src.evaluation` operate
-directly on these objects.
 
 #### Using the official CLRS30 benchmark dataset
 
-To load the **official CLRS30 dataset** (pre-generated trajectories matching the
-DeepMind paper's exact train/val/test splits), first install the dataset extras:
-
-```bash
-pip install -e ".[dataset]"
-```
-
-Then you can load it:
+After `pip install -e ".[dataset]"`:
 
 ```python
 import clrs_pytorch
 
-# Load the official BFS training set
 train_ds, num_samples, spec = clrs_pytorch.create_dataset(
-    folder='/tmp/CLRS30',  # or any path where you want the dataset
+    folder='/tmp/CLRS30',
     algorithm='bfs',
     split='train',
     batch_size=32
 )
-
-# Iterate over batches (as numpy arrays, compatible with PyTorch)
 for feedback in train_ds.as_numpy_iterator():
-    # feedback has the same structure as sampler output
-    # feedback.features.inputs, feedback.features.hints, feedback.outputs
-    loss = model(feedback, algo_idx=0)
-    # ... training step ...
+    # train step
+    ...
 ```
 
-The dataset will be automatically downloaded from Google Cloud Storage on first
-use. You can also manually download it:
-
-```python
-import requests
-import shutil
-import os
-
-url = clrs_pytorch.get_dataset_gcp_url()  # Returns the GCP URL
-folder = clrs_pytorch.get_clrs_folder()   # Returns 'CLRS30_v1.0.0'
-# Download and extract manually if needed
-```
-
-**Note**: If you try to use `create_dataset()` or `create_chunked_dataset()`
-without installing `.[dataset]`, you'll get a clear error message telling you
-to install the dataset extras.
-
-#### Using the training script
-
-The high‑level training loop for CLRS baselines lives in
-`clrs_pytorch.examples.run`. You can run it with:
-
-```bash
-python -m clrs_pytorch.examples.run \
-  --algorithms=naive_string_matcher \
-  --batch_size=16 \
-  --train_steps=1000
-```
-
-This will:
-
-- build PyTorch baseline models for the requested algorithms,
-- construct train/val/test samplers (either synthetic or TFDS‑backed, depending
-  on the `train_lengths`/`test_lengths` flags),
-- train with hint supervision, and
-- write checkpoints and JSON metrics under `artifacts/`.
+Dataset is downloaded from GCP on first use. URL and folder name: `clrs_pytorch.get_dataset_gcp_url()`, `clrs_pytorch.get_clrs_folder()`.
 
 ### Dependencies
 

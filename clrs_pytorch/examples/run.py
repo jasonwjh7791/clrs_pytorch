@@ -450,6 +450,9 @@ def restore_model(model, checkpoint_path: str):
 
 def save_model(model, output_path: str):
     """Save the model checkpoint to the specified output path."""
+    out_dir = os.path.dirname(output_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     checkpoint = {'model_state_dict': model.state_dict()}
     torch.save(checkpoint, output_path)
 
@@ -464,6 +467,9 @@ def set_seed(seed: int):
 def save_results(results):
     """Save results to the performance path."""
     try:
+        out_dir = os.path.dirname(FLAGS.performance_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
         with open(FLAGS.performance_path, 'w') as f:
             json.dump(results, f, indent=4)
         logging.info('Results successfully saved to %s', FLAGS.performance_path)
