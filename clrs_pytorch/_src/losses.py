@@ -15,7 +15,6 @@
 """Utilities for calculating losses."""
 
 from typing import Dict, List, Tuple
-import chex
 from clrs_pytorch._src import probing
 from clrs_pytorch._src import specs
 from clrs_pytorch._src.nets import _is_not_done_broadcast

@@ -18,7 +18,6 @@ from typing import Dict, Optional
 
 from clrs_pytorch._src import probing
 from clrs_pytorch._src import specs
-import haiku as hk
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

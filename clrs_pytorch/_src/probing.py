@@ -31,7 +31,6 @@ from clrs_pytorch._src import specs
 import jax
 import jax.numpy as jnp
 import numpy as np
-import tensorflow as tf
 
 
 _Location = specs.Location
@@ -48,9 +47,23 @@ ProbesDict = Dict[
 
 
 def _convert_to_str(element):
-  if isinstance(element, tf.Tensor):
-    return element.numpy().decode('utf-8')
-  elif isinstance(element, (np.ndarray, bytes)):
+  # Keep this function free of heavyweight deps (e.g. TensorFlow).
+  # Some pipelines may pass in objects that expose a `.numpy()` method (e.g.
+  # TensorFlow tensors); handle those without importing TF.
+  if hasattr(element, 'numpy'):
+    try:
+      element = element.numpy()
+    except Exception:  # Best-effort conversion.
+      pass
+  if isinstance(element, np.ndarray):
+    # For arrays of bytes, decode element-wise; for numeric arrays, return as-is.
+    if element.dtype.kind in {'S', 'O'}:
+      try:
+        return element.astype(str)
+      except Exception:
+        return element
+    return element
+  elif isinstance(element, (bytes, bytearray)):
     return element.decode('utf-8')
   else:
     return element

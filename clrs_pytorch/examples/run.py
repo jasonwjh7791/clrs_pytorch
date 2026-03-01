@@ -25,9 +25,9 @@ import torch
 import torch.optim as optim
 from torch.nn.utils import clip_grad_norm_
 import jax
-import tensorflow as tf
 import requests
 from absl import app, flags, logging
+import contextlib
 
 import clrs_pytorch
 from clrs_pytorch._src import specs, losses, samplers, decoders
@@ -86,10 +86,16 @@ flags.DEFINE_enum('processor_type', 'mpnn',
                    'triplet_gpgn', 'triplet_gpgn_mask', 'triplet_gmpnn'],
                   'Processor type to use as the network P.')
 
-flags.DEFINE_string('checkpoint_path', '/Users/jasonwjh/Documents/clrs_pytorch/clrs_checkpoints/checkpoint_shortest_paths.pth',
-                    'Path to save checkpoints.')
-flags.DEFINE_string('performance_path', '/Users/jasonwjh/Documents/clrs_pytorch/clrs_performance/performance_shortest_paths.json',
-                    'Path to save performance results.')
+flags.DEFINE_string(
+    'checkpoint_path',
+    os.path.join('artifacts', 'checkpoints', 'checkpoint.pth'),
+    'Path to save checkpoints.',
+)
+flags.DEFINE_string(
+    'performance_path',
+    os.path.join('artifacts', 'metrics', 'performance.json'),
+    'Path to save performance results.',
+)
 flags.DEFINE_string('dataset_path', '/tmp/CLRS30', 'Path where the dataset is stored.')
 flags.DEFINE_boolean('freeze_processor', False, 'Freeze the processor of the model.')
 flags.DEFINE_boolean('resume', False, 'Resume training from the last saved checkpoint if available.')
@@ -281,8 +287,15 @@ def create_samplers(rng: Any,
 
     algorithms = algorithms or FLAGS.algorithms
     for algo_idx, algorithm in enumerate(algorithms):
-        # Make full dataset pipeline run on CPU (including prefetching).
-        with tf.device('/cpu:0'):
+        # If TF is installed, keep any TFDS pipeline on CPU; otherwise no-op.
+        tf_device_ctx = contextlib.nullcontext()
+        try:
+            import tensorflow as _tf  # type: ignore
+            tf_device_ctx = _tf.device('/cpu:0')
+        except Exception:
+            pass
+
+        with tf_device_ctx:
             if algorithm in ['naive_string_matcher', 'kmp_matcher']:
                 max_length = max(train_lengths)
                 if max_length > 0:

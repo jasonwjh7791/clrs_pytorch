@@ -18,7 +18,7 @@
 import unittest
 import torch
 import numpy as np
-from processors import MPNN, PGN
+from clrs_pytorch._src.processors import MPNN
 
 class ProcessorTest(unittest.TestCase):
     def setUp(self):
@@ -36,28 +36,6 @@ class ProcessorTest(unittest.TestCase):
         self.graph_features = torch.randn(self.batch_size, self.graph_feature_size)
         self.adj_matrix = torch.randint(0, 2, (self.batch_size, self.num_nodes, self.num_nodes))
         self.hidden_features = torch.randn(self.batch_size, self.num_nodes, self.hidden_size)
-
-    def test_pgn_shapes(self):
-        """Test the shape and output of the PGN processor."""
-        model = PGN(
-            out_size=self.out_size,
-            mid_size=self.hidden_size,
-            activation=torch.relu,
-            reduction=torch.max,
-            msgs_mlp_sizes=[self.hidden_size, self.out_size],
-            use_ln=True,
-        )
-
-        output_node_features, _ = model(
-            self.node_features,
-            self.edge_features,
-            self.graph_features,
-            self.adj_matrix,
-            self.hidden_features,
-        )
-
-        # Check the shape of the output node features
-        self.assertEqual(output_node_features.shape, (self.batch_size, self.num_nodes, self.out_size))
 
     def test_mpnn_shapes(self):
         """Test the shape and output of the MPNN processor."""

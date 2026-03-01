@@ -16,7 +16,6 @@
 """Model base classes and utilities."""
 
 from typing import Dict, List, Tuple
-import chex
 from clrs_pytorch._src import probing
 from clrs_pytorch._src import specs
 import torch

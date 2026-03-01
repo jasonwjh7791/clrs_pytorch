@@ -24,7 +24,6 @@ from clrs_pytorch._src import processors
 from clrs_pytorch._src import specs
 
 from clrs_pytorch._src.dataset import chunkify
-from clrs_pytorch._src.dataset import CLRSDataset
 from clrs_pytorch._src.dataset import create_chunked_dataset
 from clrs_pytorch._src.dataset import create_dataset
 from clrs_pytorch._src.dataset import get_clrs_folder

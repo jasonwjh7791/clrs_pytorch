@@ -45,7 +45,6 @@ def _parse_requirements(path):
 setup(
     name='clrs-pytorch',
     version=_get_version(),
-    url='https://github.com/deepmind/clrs',
     license='Apache 2.0',
     author='DeepMind',
     description=('The CLRS Algorithmic Reasoning Benchmark.'),
@@ -56,10 +55,12 @@ setup(
     packages=find_namespace_packages(exclude=['*_test.py']),
     install_requires=_parse_requirements(
         os.path.join(_CURRENT_DIR, 'requirements', 'requirements.txt')),
-    tests_require=_parse_requirements(
-        os.path.join(_CURRENT_DIR, 'requirements', 'requirements.txt')),
+    extras_require={
+        'dev': _parse_requirements(os.path.join(_CURRENT_DIR, 'requirements', 'dev.txt')),
+        'dataset': _parse_requirements(os.path.join(_CURRENT_DIR, 'requirements', 'dataset.txt')),
+    },
     zip_safe=False,  # Required for full installation.
-    python_requires='>=3.6',
+    python_requires='>=3.9',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Console',
@@ -69,8 +70,10 @@ setup(
         'Operating System :: Microsoft :: Windows',
         'Operating System :: MacOS :: MacOS X',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
     ],
 )

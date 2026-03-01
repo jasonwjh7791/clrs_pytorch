@@ -17,6 +17,7 @@
 import dataclasses
 
 import functools
+import contextlib
 from typing import Iterator
 
 from clrs_pytorch._src import probing
@@ -25,8 +26,20 @@ from clrs_pytorch._src import specs
 
 import jax
 import numpy as np
-import tensorflow as tf
-import tensorflow_datasets as tfds
+
+# TensorFlow / TFDS are optional. They are only required if you want to load the
+# official CLRS30 benchmark dataset (which is distributed as TFDS shards).
+#
+# Keep imports lazy/optional so that importing `clrs_pytorch` and running unit
+# tests does not require TensorFlow.
+with contextlib.suppress(Exception):
+  import tensorflow as tf  # type: ignore
+  import tensorflow_datasets as tfds  # type: ignore
+
+if 'tf' not in globals():
+  tf = None  # type: ignore
+if 'tfds' not in globals():
+  tfds = None  # type: ignore
 
 
 def _correct_axis_filtering(tensor, index, name):
@@ -36,10 +49,24 @@ def _correct_axis_filtering(tensor, index, name):
     return tensor[index]
 
 
-@dataclasses.dataclass
-class CLRSConfig(tfds.core.BuilderConfig):
-  """Specify the split in the variant because they have different shapes."""
-  split: str = ''
+CLRS_TFDS_VERSION = '1.0.0'
+
+
+def _require_tfds():
+  if tf is None or tfds is None:
+    raise ImportError(
+        'TensorFlow + tensorflow_datasets are required for loading the official '
+        'CLRS30 benchmark dataset. Install them with:\n'
+        '  pip install -e ".[dataset]"\n'
+        'Or install manually: pip install tensorflow tensorflow-datasets'
+    )
+
+
+if tfds is not None:
+  @dataclasses.dataclass
+  class CLRSConfig(tfds.core.BuilderConfig):
+    """Specify the split in the variant because they have different shapes."""
+    split: str = ''
 
 
 DEFAULT_BUILDER_CONFIGS = []
@@ -52,90 +79,92 @@ def _build_default_builder_configs():
           CLRSConfig(name=f'{alg}_{split}', split=split))
 
 
-_build_default_builder_configs()
+if tfds is not None:
+  _build_default_builder_configs()
 
 
-class CLRSDataset(tfds.core.GeneratorBasedBuilder):
-  """DatasetBuilder for my_dataset dataset."""
+if tfds is not None:
+  class CLRSDataset(tfds.core.GeneratorBasedBuilder):
+    """TFDS builder for CLRS samples (optional dependency)."""
 
-  VERSION = tfds.core.Version('1.0.0')
-  RELEASE_NOTES = {
-      '1.0.0': 'Initial release.',
-  }
-  BUILDER_CONFIGS = DEFAULT_BUILDER_CONFIGS
+    VERSION = tfds.core.Version(CLRS_TFDS_VERSION)
+    RELEASE_NOTES = {
+        CLRS_TFDS_VERSION: 'Initial release.',
+    }
+    BUILDER_CONFIGS = DEFAULT_BUILDER_CONFIGS
 
-  _instantiated_dataset = None
-  _instantiated_dataset_name = ''
-  _instantiated_dataset_split = ''
+    _instantiated_dataset = None
+    _instantiated_dataset_name = ''
+    _instantiated_dataset_split = ''
 
-  def _num_samples(self, algorithm_name):
-    num_samples = samplers.CLRS30[self._builder_config.split]['num_samples']  # pytype: disable=attribute-error  # always-use-return-annotations
-    if self._builder_config.split != 'train':  # pytype: disable=attribute-error  # always-use-return-annotations
-      # Generate more samples for those algorithms in which the number of
-      # signals is small.
-      num_samples *= specs.CLRS_30_ALGS_SETTINGS[algorithm_name][
-          'num_samples_multiplier']
-    return num_samples
+    def _num_samples(self, algorithm_name):
+      num_samples = samplers.CLRS30[self._builder_config.split]['num_samples']  # pytype: disable=attribute-error  # always-use-return-annotations
+      if self._builder_config.split != 'train':  # pytype: disable=attribute-error  # always-use-return-annotations
+        # Generate more samples for those algorithms in which the number of
+        # signals is small.
+        num_samples *= specs.CLRS_30_ALGS_SETTINGS[algorithm_name][
+            'num_samples_multiplier']
+      return num_samples
 
-  def _create_data(self, single_sample):
-    algorithm_name = '_'.join(self._builder_config.name.split('_')[:-1])
-    num_samples = self._num_samples(algorithm_name)
-    sampler, _ = samplers.build_sampler(
-        algorithm_name,
-        seed=samplers.CLRS30[self._builder_config.split]['seed'],  # pytype: disable=attribute-error  # always-use-return-annotations
-        num_samples=num_samples,
-        length=samplers.CLRS30[self._builder_config.split]['length'],  # pytype: disable=attribute-error  # always-use-return-annotations
-    )
-    sampled_dataset = sampler.next(batch_size=1 if single_sample else None)
-    data = {'input_' + t.name: t.data for t in sampled_dataset.features.inputs}
-    # All other data points have input_, hint_, and output_ prefixes, so we
-    # guarantee that this key is unused.
-    data['lengths'] = sampled_dataset.features.lengths
-    data.update({'output_' + t.name: t.data for t in sampled_dataset.outputs})
-    data.update({
-        'hint_' + t.name: t.data for t in sampled_dataset.features.hints})
-    self._instantiated_dataset = data
+    def _create_data(self, single_sample):
+      algorithm_name = '_'.join(self._builder_config.name.split('_')[:-1])
+      num_samples = self._num_samples(algorithm_name)
+      sampler, _ = samplers.build_sampler(
+          algorithm_name,
+          seed=samplers.CLRS30[self._builder_config.split]['seed'],  # pytype: disable=attribute-error  # always-use-return-annotations
+          num_samples=num_samples,
+          length=samplers.CLRS30[self._builder_config.split]['length'],  # pytype: disable=attribute-error  # always-use-return-annotations
+      )
+      sampled_dataset = sampler.next(batch_size=1 if single_sample else None)
+      data = {'input_' + t.name: t.data for t in sampled_dataset.features.inputs}
+      # All other data points have input_, hint_, and output_ prefixes, so we
+      # guarantee that this key is unused.
+      data['lengths'] = sampled_dataset.features.lengths
+      data.update({'output_' + t.name: t.data for t in sampled_dataset.outputs})
+      data.update({
+          'hint_' + t.name: t.data for t in sampled_dataset.features.hints})
+      self._instantiated_dataset = data
 
-  def _info(self) -> tfds.core.DatasetInfo:
-    if tf.io.gfile.exists(self.data_dir):
-      info = tfds.core.DatasetInfo(builder=self)
-      info.read_from_directory(self.data_dir)
-      return info
+    def _info(self) -> tfds.core.DatasetInfo:
+      if tf.io.gfile.exists(self.data_dir):
+        info = tfds.core.DatasetInfo(builder=self)
+        info.read_from_directory(self.data_dir)
+        return info
 
-    if (self._instantiated_dataset_name != self._builder_config.name
-        or self._instantiated_dataset_split != self._builder_config.split):  # pytype: disable=attribute-error  # always-use-return-annotations
-      self._create_data(single_sample=True)
+      if (self._instantiated_dataset_name != self._builder_config.name
+          or self._instantiated_dataset_split != self._builder_config.split):  # pytype: disable=attribute-error  # always-use-return-annotations
+        self._create_data(single_sample=True)
 
-    data = {k: _correct_axis_filtering(v, 0, k)
-            for k, v in self._instantiated_dataset.items()}
-    data_info = {
-        k: tfds.features.Tensor(shape=v.shape, dtype=tf.dtypes.as_dtype(
-            v.dtype)) for k, v in data.items()}
-    return tfds.core.DatasetInfo(
-        builder=self,
-        features=tfds.features.FeaturesDict(data_info),
-    )
-
-  def _split_generators(self, dl_manager: tfds.download.DownloadManager):
-    """Download the data and define splits."""
-    if (self._instantiated_dataset_name != self._builder_config.name
-        or self._instantiated_dataset_split != self._builder_config.split):  # pytype: disable=attribute-error  # always-use-return-annotations
-      self._create_data(single_sample=False)
-      self._instantiated_dataset_name = self._builder_config.name
-      self._instantiated_dataset_split = self._builder_config.split  # pytype: disable=attribute-error  # always-use-return-annotations
-    return {self._builder_config.split: self._generate_examples()}  # pytype: disable=attribute-error  # always-use-return-annotations
-
-  def _generate_examples(self):
-    """Generator of examples for each split."""
-    algorithm_name = '_'.join(self._builder_config.name.split('_')[:-1])
-    for i in range(self._num_samples(algorithm_name)):
-      data = {k: _correct_axis_filtering(v, i, k)
+      data = {k: _correct_axis_filtering(v, 0, k)
               for k, v in self._instantiated_dataset.items()}
-      yield str(i), data
+      data_info = {
+          k: tfds.features.Tensor(shape=v.shape, dtype=tf.dtypes.as_dtype(
+              v.dtype)) for k, v in data.items()}
+      return tfds.core.DatasetInfo(
+          builder=self,
+          features=tfds.features.FeaturesDict(data_info),
+      )
+
+    def _split_generators(self, dl_manager: tfds.download.DownloadManager):
+      """Download the data and define splits."""
+      if (self._instantiated_dataset_name != self._builder_config.name
+          or self._instantiated_dataset_split != self._builder_config.split):  # pytype: disable=attribute-error  # always-use-return-annotations
+        self._create_data(single_sample=False)
+        self._instantiated_dataset_name = self._builder_config.name
+        self._instantiated_dataset_split = self._builder_config.split  # pytype: disable=attribute-error  # always-use-return-annotations
+      return {self._builder_config.split: self._generate_examples()}  # pytype: disable=attribute-error  # always-use-return-annotations
+
+    def _generate_examples(self):
+      """Generator of examples for each split."""
+      algorithm_name = '_'.join(self._builder_config.name.split('_')[:-1])
+      for i in range(self._num_samples(algorithm_name)):
+        data = {k: _correct_axis_filtering(v, i, k)
+                for k, v in self._instantiated_dataset.items()}
+        yield str(i), data
 
 
 def _get_clrs_file_name():
-  return f'CLRS30_v{CLRSDataset.VERSION}.tar.gz'
+  return f'CLRS30_v{CLRS_TFDS_VERSION}.tar.gz'
 
 
 def get_dataset_gcp_url():
@@ -143,11 +172,12 @@ def get_dataset_gcp_url():
 
 
 def get_clrs_folder():
-  return f'CLRS30_v{CLRSDataset.VERSION}'
+  return f'CLRS30_v{CLRS_TFDS_VERSION}'
 
 
 def _preprocess(data_point, algorithm=None):
   """Convert sampled inputs into DataPoints."""
+  _require_tfds()
   inputs = []
   outputs = []
   hints = []
@@ -175,6 +205,7 @@ def _preprocess(data_point, algorithm=None):
 
 
 def create_dataset(folder, algorithm, split, batch_size):
+  _require_tfds()
   dataset = tfds.load(f'clrs_dataset/{algorithm}_{split}',
                       data_dir=folder, split=split)
   num_samples = len(dataset)  # Must be done here for correct size
@@ -317,6 +348,7 @@ def chunkify(dataset: Iterator[samplers.Feedback], chunk_length: int):
 
 
 def create_chunked_dataset(folder, algorithm, split, batch_size, chunk_length):
+  _require_tfds()
   dataset = tfds.load(f'clrs_dataset/{algorithm}_{split}',
                       data_dir=folder, split=split)
   dataset = dataset.repeat()

@@ -29,7 +29,7 @@ from absl import app, flags, logging
 
 import clrs_pytorch
 from clrs_pytorch._src import specs, losses, samplers, decoders
-import run 
+from clrs_pytorch.examples import run
 
 _Location = specs.Location
 
