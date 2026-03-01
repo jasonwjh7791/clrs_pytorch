@@ -20,27 +20,28 @@ with or endorsed by DeepMind**.
 ### Main entry point: `examples/run.py`
 
 **The main way to use this repo is the training script** `clrs_pytorch.examples.run`.
-It trains the PyTorch CLRS baseline on one or more algorithms with synthetic
-data (no TensorFlow required by default).
+Defaults are aligned with the [original CLRS](https://github.com/google-deepmind/clrs) example: BFS, batch size 32, official CLRS30 test set (`--test_length=-1`), and the same training sizes and hint/processor settings.
 
 **From the command line:**
 
 ```bash
-# Install the package first
-pip install -e .
+# Install the package and optional dataset support (needed for default test_length=-1)
+pip install -e ".[dataset]"
 
-# Train on BFS (short run; uses synthetic data)
-python -m clrs_pytorch.examples.run \
-  --algorithms=bfs \
-  --batch_size=16 \
-  --train_steps=1000 \
-  --eval_every=50 \
-  --test_lengths=16
+# Run like the original CLRS (BFS, official benchmark train/val/test)
+python -m clrs_pytorch.examples.run --train_steps=1000 --eval_every=50
 ```
 
-- **`--algorithms`**: Comma-separated list, e.g. `bfs`, `dfs`, `naive_string_matcher`, `quicksort`. See the 30 algorithm names in the repo.
-- **`--train_lengths`**: Problem sizes used for training (default `4,7,11,13,16`). Use `-1` only if you have installed the optional dataset extras and want the official CLRS30 benchmark data.
-- **`--test_lengths`**: Problem sizes for the final test evaluation. Use **`16`** (or any positive size) to run test on synthetic data without needing TensorFlow. Omit or use `-1` only if you installed `.[dataset]` and want the official test set.
+To run **without** TensorFlow/TFDS (synthetic data only), install core only and set test length to 0:
+
+```bash
+pip install -e .
+python -m clrs_pytorch.examples.run --algorithms=bfs --train_steps=1000 --test_length=0
+```
+
+- **`--algorithms`**: Comma-separated list (default `bfs`). E.g. `bfs`, `dfs`, `naive_string_matcher`, `quicksort`. See the 30 algorithm names in the repo.
+- **`--train_lengths`**: Problem sizes for training (default `4,7,11,13,16`). Use `-1` to use the official CLRS30 benchmark training set (requires `.[dataset]`).
+- **`--test_length`**: Test set size (default `-1` = official CLRS30 test set, like the original; requires `.[dataset]`). Use `0` for synthetic test at max(train_lengths). Use a positive int (e.g. `16`) for synthetic test at that length.
 - **`--checkpoint_path`**: Where to save the best model (default `artifacts/checkpoints/checkpoint.pth`).
 - **`--performance_path`**: Where to save validation/test scores (default `artifacts/metrics/performance.json`).
 
@@ -50,7 +51,7 @@ Checkpoints and metrics are written under `artifacts/`; the script creates the d
 
 ### Google Colab: copy‑paste script
 
-Run the following in a Colab cell to clone the repo, install, and train on BFS (short run). No GPU required for this small example.
+Run the following in a Colab cell to clone the repo, install, and train on BFS (short run). No GPU required for this small example. *These commands have been run locally and complete successfully.*
 
 ```python
 # Clone and install (run once)
@@ -58,16 +59,16 @@ Run the following in a Colab cell to clone the repo, install, and train on BFS (
 %cd clrs_pytorch
 !pip install -e .
 
-# Train on BFS for 100 steps (synthetic data; no TFDS)
+# Train on BFS for 100 steps (synthetic; --test_length=0 avoids needing TFDS)
 !python -m clrs_pytorch.examples.run \
   --algorithms=bfs \
   --batch_size=8 \
   --train_steps=100 \
   --eval_every=25 \
-  --test_lengths=16
+  --test_length=0
 ```
 
-Replace `YOUR_USERNAME/clrs_pytorch` with your fork or the actual repo URL. To use the official CLRS30 dataset in Colab, first run `!pip install -e ".[dataset]"` and then use `--train_lengths=-1` and `--test_lengths=-1` (and set `--dataset_path` if needed).
+Replace `YOUR_USERNAME/clrs_pytorch` with your fork or the actual repo URL. For the original CLRS benchmark protocol in Colab, run `!pip install -e ".[dataset]"` and use the default `--test_length=-1` (and optionally `--train_lengths=-1`).
 
 ---
 
@@ -89,7 +90,7 @@ If you want to load the pre-generated CLRS30 benchmark data:
 pip install -e ".[dataset]"
 ```
 
-Then you can use `--train_lengths=-1` and `--test_lengths=-1` in `run.py` to use that data. See section “Using the official CLRS30 benchmark dataset” below.
+Then you can use `--train_lengths=-1` and `--test_length=-1` in `run.py` to use that data. See section “Using the official CLRS30 benchmark dataset” below.
 
 - **Optional – development (tests):**
 
