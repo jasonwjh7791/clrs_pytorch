@@ -51,24 +51,23 @@ Checkpoints and metrics are written under `artifacts/`; the script creates the d
 
 ### Google Colab: copy‑paste script
 
-Run the following in a Colab cell to clone the repo, install, and train on BFS (short run). No GPU required for this small example. *These commands have been run locally and complete successfully.*
+Run the following in a Colab cell to clone the repo, install (with official dataset support), and train on BFS. Uses the official CLRS30 benchmark by default. No GPU required for this small example.
 
 ```python
-# Clone and install (run once)
+# Clone and install with dataset support (run once)
 !git clone https://github.com/YOUR_USERNAME/clrs_pytorch.git
 %cd clrs_pytorch
-!pip install -e .
+!pip install -e ".[dataset]"
 
-# Train on BFS for 100 steps (synthetic; --test_length=0 avoids needing TFDS)
+# Train on BFS for 100 steps (official dataset; dataset downloads on first run)
 !python -m clrs_pytorch.examples.run \
   --algorithms=bfs \
   --batch_size=8 \
   --train_steps=100 \
-  --eval_every=25 \
-  --test_length=0
+  --eval_every=25
 ```
 
-Replace `YOUR_USERNAME/clrs_pytorch` with your fork or the actual repo URL. For the original CLRS benchmark protocol in Colab, run `!pip install -e ".[dataset]"` and use the default `--test_length=-1` (and optionally `--train_lengths=-1`).
+Replace `YOUR_USERNAME/clrs_pytorch` with your fork or the actual repo URL. On first run the CLRS30 dataset is downloaded automatically. For a synthetic-only run without TensorFlow, use `pip install -e .` and add `--test_length=0`.
 
 ---
 
